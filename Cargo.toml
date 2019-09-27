@@ -1,0 +1,15 @@
+[package]
+name = "err-context"
+version = "0.1.0"
+authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
+edition = "2018"
+
+[features]
+default = []
+
+[dependencies]
+failure = { version = "~0.1", optional = true, default_features = false, features = ["std"]}
+
+[package.metadata.docs.rs]
+all-features = true
+
