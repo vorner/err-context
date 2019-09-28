@@ -237,10 +237,7 @@ impl<M, E> Context<M, E> {
     /// More usually created by the [`context`][ErrorExt::context], but allowing for construction
     /// directly without importing the trait.
     pub fn new(msg: M, error: E) -> Self {
-        Self {
-            msg,
-            inner: error,
-        }
+        Self { msg, inner: error }
     }
 
     /// Extracts the inner error, peeling off the outer layer.
@@ -262,10 +259,7 @@ pub struct BoxContext<M, E: ?Sized> {
 impl<M, E: ?Sized> BoxContext<M, E> {
     /// Direct construction of the context.
     pub fn new(msg: M, error: Box<E>) -> Self {
-        Self {
-            msg,
-            inner: error,
-        }
+        Self { msg, inner: error }
     }
 
     /// Extracts the inner error, peeling off the outer layer.
@@ -287,7 +281,7 @@ macro_rules! impl_err {
                 Some(&*self.inner)
             }
         }
-    }
+    };
 }
 
 impl_err!(dyn Error + Send + Sync);
@@ -389,7 +383,7 @@ impl<E: Error> ErrorExt for E {
     }
     fn chain(&self) -> Chain<'_>
     where
-        Self: 'static
+        Self: 'static,
     {
         Chain(Some(self))
     }
@@ -428,7 +422,7 @@ macro_rules! impl_any_error {
                 Chain(Some(&**self))
             }
         }
-    }
+    };
 }
 
 impl_any_error!(dyn Error + Send + Sync);
@@ -474,7 +468,7 @@ impl<T, E: Error> private::ResultSealed for Result<T, E> {}
 impl<T, E: Error> ResultExt<T, E> for Result<T, E> {
     fn context<M>(self, msg: M) -> Result<T, Context<M, E>>
     where
-        M: Display
+        M: Display,
     {
         self.map_err(|e| e.context(msg))
     }
@@ -482,7 +476,7 @@ impl<T, E: Error> ResultExt<T, E> for Result<T, E> {
     fn with_context<F, M>(self, f: F) -> Result<T, Context<M, E>>
     where
         F: FnOnce(&E) -> M,
-        M: Display
+        M: Display,
     {
         self.map_err(|e| {
             let msg = f(&e);
@@ -514,7 +508,7 @@ macro_rules! any_result_impl {
         impl<T> BoxedResultExt<T, $ty> for Result<T, Box<$ty>> {
             fn context<M>(self, msg: M) -> Result<T, BoxContext<M, $ty>>
             where
-                M: Display
+                M: Display,
             {
                 self.map_err(|e| e.context(msg))
             }
@@ -522,7 +516,7 @@ macro_rules! any_result_impl {
             fn with_context<F, M>(self, f: F) -> Result<T, BoxContext<M, $ty>>
             where
                 F: FnOnce(&Box<$ty>) -> M,
-                M: Display
+                M: Display,
             {
                 self.map_err(|e| {
                     let msg = f(&e);
@@ -530,7 +524,7 @@ macro_rules! any_result_impl {
                 })
             }
         }
-    }
+    };
 }
 
 any_result_impl!(dyn Error + Send + Sync);
@@ -551,10 +545,10 @@ any_result_impl!(dyn Error);
 /// Only the traits are imported and they are imported anonymously (so their names can't clash with
 /// anything, but they also can't be referred directly).
 pub mod prelude {
-    pub use crate::ErrorExt as _;
     pub use crate::BoxedErrorExt as _;
-    pub use crate::ResultExt as _;
     pub use crate::BoxedResultExt as _;
+    pub use crate::ErrorExt as _;
+    pub use crate::ResultExt as _;
 }
 
 mod private {
@@ -568,8 +562,8 @@ mod private {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Error as IoError, Read};
     use super::*;
+    use std::io::{Error as IoError, Read};
 
     fn _context_error() -> impl Error {
         IoError::last_os_error().context("Hello")
@@ -582,7 +576,9 @@ mod tests {
 
     fn _context_result() -> Result<(), AnyError> {
         let mut buf = [0];
-        std::io::stdin().read(&mut buf).context("Failed to read line")?;
+        std::io::stdin()
+            .read(&mut buf)
+            .context("Failed to read line")?;
         Ok(())
     }
 
