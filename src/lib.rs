@@ -145,8 +145,6 @@
 //! # use err_context::prelude::*;
 //! let inner = std::io::Error::last_os_error();
 //! let outer = inner.context("Some error");
-//! // Will print something like:
-//! // Some error: success
 //! assert!(outer.find_source::<std::io::Error>().is_some());
 //! ```
 //!
@@ -432,7 +430,8 @@ impl_any_error!(dyn Error);
 
 /// Extension traits for results.
 ///
-/// This provides method to enrich the error in the result with additional context.
+/// This provides method to enrich the error in the result with additional context. See the general
+/// principles and examples at the [crate level documentation](index.html).
 ///
 /// Usually, this trait isn't imported directly, but through the [`prelude`].
 pub trait ResultExt<T, E>: private::ResultSealed + Sized {
