@@ -335,7 +335,7 @@ impl<M, F: failure::Fail> Context<M, failure::Compat<F>> {
 /// documentation](index.html) for examples and general principles.
 ///
 /// Note that usually this trait is not imported directly, but through the [`prelude`].
-pub trait ErrorExt: Sized {
+pub trait ErrorExt: private::Sealed + Sized {
     /// Wraps the error into another layer of context.
     ///
     /// The produced error will have one more layer. The outer layer will have the provided message
@@ -381,6 +381,8 @@ pub trait ErrorExt: Sized {
     }
 }
 
+impl<E: Error> private::Sealed for E {}
+
 impl<E: Error> ErrorExt for E {
     fn context<M: Display>(self, msg: M) -> Context<M, Self> {
         Context::new(msg, self)
@@ -397,7 +399,7 @@ impl<E: Error> ErrorExt for E {
 ///
 /// This is effectively the same trait as [`ErrorExt`], but for boxed errors. It exists separately
 /// purely for implementation reasons.
-pub trait AnyErrorExt<E: ?Sized>: Sized {
+pub trait BoxedErrorExt<E: ?Sized>: private::BoxedSealed + Sized {
     /// Equivalent of [`ErrorExt::context`].
     fn context<M: Display>(self, msg: M) -> BoxContext<M, E>;
     /// Equivalent of [`ErrorExt::chain`].
@@ -417,7 +419,8 @@ pub trait AnyErrorExt<E: ?Sized>: Sized {
 
 macro_rules! impl_any_error {
     ($ty: ty) => {
-        impl AnyErrorExt<$ty> for Box<$ty> {
+        impl private::BoxedSealed for Box<$ty> {}
+        impl BoxedErrorExt<$ty> for Box<$ty> {
             fn context<M: Display>(self, msg: M) -> BoxContext<M, $ty> {
                 BoxContext::new(msg, self)
             }
@@ -438,7 +441,7 @@ impl_any_error!(dyn Error);
 /// This provides method to enrich the error in the result with additional context.
 ///
 /// Usually, this trait isn't imported directly, but through the [`prelude`].
-pub trait ResultExt<T, E>: Sized {
+pub trait ResultExt<T, E>: private::ResultSealed + Sized {
     /// Wraps the error in another layer of context.
     ///
     /// If the result is success, this does nothing. If it is error, it wraps the error in another
@@ -466,6 +469,8 @@ pub trait ResultExt<T, E>: Sized {
         M: Display;
 }
 
+impl<T, E: Error> private::ResultSealed for Result<T, E> {}
+
 impl<T, E: Error> ResultExt<T, E> for Result<T, E> {
     fn context<M>(self, msg: M) -> Result<T, Context<M, E>>
     where
@@ -490,7 +495,7 @@ impl<T, E: Error> ResultExt<T, E> for Result<T, E> {
 ///
 /// This trait serves the same purpose and acts in the same ways as the [`ResultExt`], so refer to
 /// that for details. It exists merely for implementation purposes.
-pub trait AnyResultExt<T, E: ?Sized> {
+pub trait BoxedResultExt<T, E: ?Sized>: private::BoxedResultSealed {
     /// A [`ResultExt::context`] equivalent.
     fn context<M>(self, msg: M) -> Result<T, BoxContext<M, E>>
     where
@@ -505,7 +510,8 @@ pub trait AnyResultExt<T, E: ?Sized> {
 
 macro_rules! any_result_impl {
     ($ty: ty) => {
-        impl<T> AnyResultExt<T, $ty> for Result<T, Box<$ty>> {
+        impl<T> private::BoxedResultSealed for Result<T, Box<$ty>> {}
+        impl<T> BoxedResultExt<T, $ty> for Result<T, Box<$ty>> {
             fn context<M>(self, msg: M) -> Result<T, BoxContext<M, $ty>>
             where
                 M: Display
@@ -546,9 +552,18 @@ any_result_impl!(dyn Error);
 /// anything, but they also can't be referred directly).
 pub mod prelude {
     pub use crate::ErrorExt as _;
-    pub use crate::AnyErrorExt as _;
+    pub use crate::BoxedErrorExt as _;
     pub use crate::ResultExt as _;
-    pub use crate::AnyResultExt as _;
+    pub use crate::BoxedResultExt as _;
+}
+
+mod private {
+    // Trick to prevent others implementing our extension traits. This allows us adding new methods
+    // in the future without breaking API.
+    pub trait Sealed {}
+    pub trait BoxedSealed {}
+    pub trait ResultSealed {}
+    pub trait BoxedResultSealed {}
 }
 
 #[cfg(test)]
