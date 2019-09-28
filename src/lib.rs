@@ -1,3 +1,10 @@
+#![doc(
+    html_root_url = "https://docs.rs/err-context/0.1.0/err-context/",
+    test(attr(deny(warnings)))
+)]
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::mem;

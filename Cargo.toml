@@ -3,12 +3,22 @@ name = "err-context"
 version = "0.1.0"
 authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
 edition = "2018"
+description = "Lightweight context layers for stdandard library errors"
+documentation = "https://docs.rs/err-context"
+repository = "https://github.com/vorner/err-context"
+readme = "README.md"
+keywords = ["error"]
+license = "Apache-2.0 OR MIT"
 
-[features]
-default = []
+[badges]
+travis-ci = { repository = "vorner/err-context" }
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 failure = { version = "~0.1", optional = true, default_features = false, features = ["std"]}
+
+[dev-dependencies]
+version-sync = "~0.8"
 
 [package.metadata.docs.rs]
 all-features = true
