@@ -38,25 +38,7 @@ impl<S: Display> Display for DisplayChain<'_, S> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[repr(transparent)]
-pub struct Wrapped<T>(T);
-
-impl<T: Display> Display for Wrapped<T> {
-    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        self.0.fmt(fmt)
-    }
-}
-
-impl<T: Error + ?Sized> Error for Wrapped<Box<T>> {
-    fn description(&self) -> &str {
-        self.0.description()
-    }
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.0.source()
-    }
-}
-
+#[derive(Copy, Clone, Debug)]
 pub struct Context<M, E> {
     msg: M,
     inner: E,
@@ -65,15 +47,6 @@ pub struct Context<M, E> {
 impl<M: Display, E> Display for Context<M, E> {
     fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
         self.msg.fmt(fmt)
-    }
-}
-
-impl<M: Debug, E: Debug> Debug for Context<M, E> {
-    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        fmt.debug_struct("Context")
-            .field("msg", &self.msg)
-            .field("inner", &self.inner)
-            .finish()
     }
 }
 
@@ -96,19 +69,50 @@ impl<M, E> Context<M, E> {
     }
 }
 
+#[derive(Debug)]
+pub struct BoxContext<M, E: ?Sized> {
+    msg: M,
+    inner: Box<E>,
+}
+
+impl<M, E: ?Sized> BoxContext<M, E> {
+    pub fn new(msg: M, error: Box<E>) -> Self {
+        Self {
+            msg,
+            inner: error,
+        }
+    }
+
+    pub fn into_inner(self) -> Box<E> {
+        self.inner
+    }
+}
+
+impl<M: Display, E: ?Sized> Display for BoxContext<M, E> {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        self.msg.fmt(fmt)
+    }
+}
+
+macro_rules! impl_err {
+    ($ty: ty) => {
+        impl<M: Debug + Display> Error for BoxContext<M, $ty> {
+            fn source(&self) -> Option<&(dyn Error + 'static)> {
+                Some(&*self.inner)
+            }
+        }
+    }
+}
+
+impl_err!(dyn Error + Send + Sync);
+impl_err!(dyn Error + Send);
+impl_err!(dyn Error + Sync);
+impl_err!(dyn Error);
+
 #[cfg(feature = "failure")]
 impl<M> Context<M, failure::Compat<failure::Error>> {
     pub fn from_failure(msg: M, failure: failure::Error) -> Self {
         Self::new(msg, failure.compat())
-    }
-}
-
-impl<M, E: ?Sized> Context<M, Wrapped<Box<E>>> {
-    pub fn from_boxed(msg: M, error: Box<E>) -> Self {
-        Self {
-            msg,
-            inner: Wrapped(error),
-        }
     }
 }
 
@@ -146,8 +150,8 @@ impl<E: Error> ErrorExt for E {
     }
 }
 
-pub trait AnyErrorExt: Sized {
-    fn context<M: Display>(self, msg: M) -> Context<M, Wrapped<Self>>;
+pub trait AnyErrorExt<E: ?Sized>: Sized {
+    fn context<M: Display>(self, msg: M) -> BoxContext<M, E>;
     fn chain(&self) -> Chain<'_>;
     fn find_source<T: Error + 'static>(&self) -> Option<&T> {
         self.chain().find_map(|e| e.downcast_ref::<T>())
@@ -162,9 +166,9 @@ pub trait AnyErrorExt: Sized {
 
 macro_rules! impl_any_error {
     ($ty: ty) => {
-        impl AnyErrorExt for Box<$ty> {
-            fn context<M: Display>(self, msg: M) -> Context<M, Wrapped<Box<$ty>>> {
-                Context::from_boxed(msg, self)
+        impl AnyErrorExt<$ty> for Box<$ty> {
+            fn context<M: Display>(self, msg: M) -> BoxContext<M, $ty> {
+                BoxContext::new(msg, self)
             }
             fn chain(&self) -> Chain<'_> {
                 Chain(Some(&**self))
@@ -210,11 +214,11 @@ impl<T, E: Error> ResultExt<T, E> for Result<T, E> {
 }
 
 pub trait AnyResultExt<T, E: ?Sized> {
-    fn context<M>(self, msg: M) -> Result<T, Context<M, Wrapped<Box<E>>>>
+    fn context<M>(self, msg: M) -> Result<T, BoxContext<M, E>>
     where
         M: Display;
 
-    fn with_context<F, M>(self, f: F) -> Result<T, Context<M, Wrapped<Box<E>>>>
+    fn with_context<F, M>(self, f: F) -> Result<T, BoxContext<M, E>>
     where
         F: FnOnce(&Box<E>) -> M,
         M: Display;
@@ -223,14 +227,14 @@ pub trait AnyResultExt<T, E: ?Sized> {
 macro_rules! any_result_impl {
     ($ty: ty) => {
         impl<T> AnyResultExt<T, $ty> for Result<T, Box<$ty>> {
-            fn context<M>(self, msg: M) -> Result<T, Context<M, Wrapped<Box<$ty>>>>
+            fn context<M>(self, msg: M) -> Result<T, BoxContext<M, $ty>>
             where
                 M: Display
             {
                 self.map_err(|e| e.context(msg))
             }
 
-            fn with_context<F, M>(self, f: F) -> Result<T, Context<M, Wrapped<Box<$ty>>>>
+            fn with_context<F, M>(self, f: F) -> Result<T, BoxContext<M, $ty>>
             where
                 F: FnOnce(&Box<$ty>) -> M,
                 M: Display
@@ -260,13 +264,6 @@ pub mod prelude {
 mod tests {
     use std::io::{Error as IoError, Read};
     use super::*;
-
-    // Some tests that try stuff compiles, that all the traits are implemented for everything they
-    // should be.
-    fn _wrapped_any_error() -> impl Error {
-        let e: AnyError = IoError::last_os_error().into();
-        Wrapped(e)
-    }
 
     fn _context_error() -> impl Error {
         IoError::last_os_error().context("Hello")
@@ -303,6 +300,15 @@ mod tests {
         Dummy.context("Sorry").into()
     }
 
+    fn get_boxed() -> AnyError {
+        Dummy.into()
+    }
+
+    fn get_boxed_chain() -> AnyError {
+        let a = get_boxed().context("Sorry");
+        a.into()
+    }
+
     #[test]
     fn iter_chain() {
         assert_eq!(1, Dummy.chain().count());
@@ -313,6 +319,7 @@ mod tests {
     fn find_dummy() {
         assert!(Dummy.find_source::<Dummy>().is_some());
         assert!(get_chain().find_source::<Dummy>().is_some());
+        assert!(get_boxed_chain().find_source::<Dummy>().is_some());
         assert!(get_chain().find_source::<IoError>().is_none());
     }
 
